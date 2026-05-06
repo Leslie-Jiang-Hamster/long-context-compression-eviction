@@ -23,6 +23,11 @@
 - `scripts/`：本地/远程运行脚本
 - `src/`：方法实现
 
+## 常用脚本
+- 同步代码到远端（不执行评测）：`bash scripts/remote_sync_git.sh [branch]`
+- 跑真实 LongBench（多子集）：`bash scripts/run_eval_real.sh [config] [max_samples] [subsets] [min_len]`
+- 跑 HotpotQA 长样本（`length>=8000`）：`bash scripts/run_eval_hotpotqa_8k.sh [config] [max_samples] [min_len]`
+
 ## 里程碑
 1. 跑通基线（Full KV / H2O / StreamingLLM / CompLLM）
 2. 实现融合策略 V1（静态阈值）
