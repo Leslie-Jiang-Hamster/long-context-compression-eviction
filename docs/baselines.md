@@ -7,10 +7,10 @@
 4. CompLLM-style Compression
 
 ## Ablations
-1. Ours w/o Adaptive Gate
-2. Ours w/o Sink Preservation
-3. Ours w/o Compression
-4. Ours w/o Eviction
+1. AHEC w/o Adaptive Gate
+2. AHEC w/o Sink Preservation
+3. AHEC w/o Compression
+4. AHEC w/o Eviction
 
 ## 记录模板
 - Model:

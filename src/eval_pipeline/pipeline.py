@@ -58,7 +58,7 @@ def run_pipeline(
     opts: RunOptions,
 ) -> dict:
     random.seed(opts.seed)
-    methods = cfg.methods or ["full_kv", "ours_hybrid"]
+    methods = cfg.methods or ["full_kv", "AHEC"]
     repeats = opts.judge_repeats_override if opts.judge_repeats_override > 0 else cfg.judge_repeats
     repeats = max(1, repeats)
     warmup_runs = max(0, int(opts.warmup_runs))

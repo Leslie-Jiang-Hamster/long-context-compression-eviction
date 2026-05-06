@@ -67,6 +67,7 @@ class PolicyResult:
 
 
 def apply_method(method: str, question: str, contexts: list[str]) -> PolicyResult:
+    method_key = (method or "").strip().lower()
     all_chunks: list[str] = []
     for ctx in contexts:
         all_chunks.extend(_chunk_text(ctx))
@@ -88,23 +89,23 @@ def apply_method(method: str, question: str, contexts: list[str]) -> PolicyResul
     detail = {"sink_kept": sink_keep, "total_chunks": len(all_chunks)}
     full_tokens_est = max(1, len(_word_tokens("\n\n".join(all_chunks))))
 
-    if method == "full_kv":
+    if method_key == "full_kv":
         selected = list(all_chunks)
         detail.update({"eviction_rate": 0.0, "compression_rate": 0.0})
-    elif method == "h2o":
+    elif method_key == "h2o":
         keep_n = max(1, int(math.ceil(len(rest_chunks) * 0.5)))
         top = sorted(scored_rest, key=lambda x: x[0], reverse=True)[:keep_n]
         selected = sink_chunks + [x[2] for x in sorted(top, key=lambda x: x[1])]
         detail.update({"eviction_rate": 0.5, "compression_rate": 0.0})
-    elif method == "streamingllm":
+    elif method_key == "streamingllm":
         window_n = max(1, int(math.ceil(len(rest_chunks) * 0.4)))
         selected = sink_chunks + rest_chunks[-window_n:]
         detail.update({"eviction_rate": 0.6, "compression_rate": 0.0})
-    elif method == "compllm_style":
+    elif method_key == "compllm_style":
         base = sink_chunks + rest_chunks
         selected = [_compress_chunk_by_question(c, question, keep_ratio=0.65) for c in base]
         detail.update({"eviction_rate": 0.0, "compression_rate": 0.35})
-    elif method == "ours_hybrid":
+    elif method_key in ("ahec", "ours_hybrid"):
         pressure = _clamp((full_tokens_est - 1500) / 6000.0, 0.0, 1.0)
         eviction_rate = 0.15 + 0.35 * pressure
         compression_rate = 0.10 + 0.45 * pressure
@@ -118,7 +119,7 @@ def apply_method(method: str, question: str, contexts: list[str]) -> PolicyResul
                 "eviction_rate": round(eviction_rate, 4),
                 "compression_rate": round(compression_rate, 4),
                 "adaptive_pressure": round(pressure, 4),
-                "hybrid_policy": "sink_preserve + importance_eviction + question_aware_compression",
+                "ahec_policy": "sink_preserve + importance_eviction + question_aware_compression",
             }
         )
     else:
@@ -136,4 +137,3 @@ def apply_method(method: str, question: str, contexts: list[str]) -> PolicyResul
         }
     )
     return PolicyResult(method_context=method_context, detail=detail)
-

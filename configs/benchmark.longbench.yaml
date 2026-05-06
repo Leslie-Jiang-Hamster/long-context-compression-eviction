@@ -6,7 +6,7 @@ model:
   max_context: 32768
 methods:
   - full_kv
-  - ours_hybrid
+  - AHEC
 metrics:
   semantic:
     - faithfulness

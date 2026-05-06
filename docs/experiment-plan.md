@@ -5,7 +5,7 @@
 - Eviction-only: H2O, StreamingLLM
 - Compression-only: CompLLM 风格
 
-## 阶段 2：融合方法（Ours）
+## 阶段 2：融合方法（AHEC）
 - Step A: 压缩候选集（压缩低重要性 token）
 - Step B: 淘汰策略（保留 sink + 高频重要 token）
 - Step C: 自适应门控
