@@ -1,0 +1,18 @@
+benchmark: longbench
+subset:
+  - multi_document_qa
+model:
+  name: "to_be_filled"
+  max_context: 32768
+methods:
+  - full_kv
+  - h2o
+  - streamingllm
+  - compllm_style
+  - ours_hybrid
+metrics:
+  - em
+  - f1
+  - kv_mem_reduction
+  - peak_vram
+  - throughput
