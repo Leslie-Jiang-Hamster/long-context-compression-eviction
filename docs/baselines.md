@@ -16,7 +16,10 @@
 - Model:
 - Context Length:
 - Task:
-- Metric(EM/F1/Rouge):
+- Faithfulness:
+- Answer Relevancy:
+- Context Precision:
+- F1/Rouge-L/Accuracy:
 - KV Memory Reduction(%):
 - Peak VRAM(GB):
 - Throughput(tokens/s):

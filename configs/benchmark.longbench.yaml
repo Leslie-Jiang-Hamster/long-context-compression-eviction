@@ -11,8 +11,20 @@ methods:
   - compllm_style
   - ours_hybrid
 metrics:
-  - em
-  - f1
-  - kv_mem_reduction
-  - peak_vram
-  - throughput
+  semantic:
+    - faithfulness
+    - answer_relevancy
+    - context_precision
+  string:
+    - f1
+    - rouge_l
+    - accuracy
+  resource:
+    - kv_mem_reduction
+    - peak_vram
+    - throughput
+judge:
+  model: "to_be_filled"
+  temperature: 0
+  repeats: 3
+  human_audit_ratio: 0.1
