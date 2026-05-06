@@ -48,6 +48,7 @@ def run_pipeline(
     per_method_rows: dict[str, list[dict]] = {m: [] for m in methods}
     for sidx, sample in enumerate(samples[: opts.max_samples]):
         for method in methods:
+            print(f"[PROGRESS] sample={sidx+1}/{min(len(samples), opts.max_samples)} method={method} start", flush=True)
             policy = apply_method(method, sample.question, sample.contexts)
 
             if opts.dry_run:
@@ -74,6 +75,11 @@ def run_pipeline(
                     max_new_tokens=opts.local_max_new_tokens,
                     temperature=opts.local_temperature,
                 )
+                print(
+                    f"[PROGRESS] method={method} local_gen_done "
+                    f"latency={local.elapsed_seconds:.2f}s gen_tokens={local.generated_tokens}",
+                    flush=True,
+                )
                 judge_scores = []
                 for _ in range(repeats):
                     jr = judge.judge_once(
@@ -84,6 +90,7 @@ def run_pipeline(
                     )
                     judge_scores.append(jr.score)
                     time.sleep(opts.judge_sleep_seconds)
+                print(f"[PROGRESS] method={method} judge_done repeats={repeats}", flush=True)
 
             agg = _aggregate_semantic(judge_scores)
             throughput = (
@@ -120,6 +127,7 @@ def run_pipeline(
                 "method_detail": policy.detail,
             }
             per_method_rows[method].append(row)
+            print(f"[PROGRESS] sample={sidx+1} method={method} finished", flush=True)
 
     summary = {}
     for method, rows in per_method_rows.items():

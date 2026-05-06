@@ -6,9 +6,6 @@ model:
   max_context: 32768
 methods:
   - full_kv
-  - h2o
-  - streamingllm
-  - compllm_style
   - ours_hybrid
 metrics:
   semantic:
