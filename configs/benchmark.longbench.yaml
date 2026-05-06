@@ -15,10 +15,6 @@ metrics:
     - faithfulness
     - answer_relevancy
     - context_precision
-  string:
-    - f1
-    - rouge_l
-    - accuracy
   resource:
     - kv_mem_reduction
     - peak_vram

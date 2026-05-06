@@ -16,7 +16,6 @@
 - 数据：LongBench（优先多文档问答）
 - 长度分桶：8k / 16k / 32k / 64k（按模型能力裁剪）
 - 主指标：Faithfulness / Answer Relevancy / Context Precision
-- 次指标：F1 / Rouge-L / Accuracy
 - 资源指标：KV 内存、峰值显存、吞吐
 
 ## 阶段 4：消融
@@ -26,6 +25,5 @@
 
 ## 产出图表
 - 语义质量-内存 Pareto 曲线
-- 字符串质量-内存对照曲线
 - 不同上下文长度下的稳定性曲线
 - 各层保留率热力图

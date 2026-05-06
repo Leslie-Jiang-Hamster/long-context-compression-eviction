@@ -19,11 +19,9 @@
 - Faithfulness
 - Answer Relevancy
 - Context Precision
-- F1 / Rouge-L / Accuracy（次指标）
 - KV Memory Reduction(%)
 - Peak VRAM(GB)
 - Throughput(tokens/s)
 
 ## 判定原则
-- 主结论以语义指标和资源指标为准
-- 字符串指标仅用于横向可比和稳定性补充
+- 主结论仅以语义指标和资源指标为准
