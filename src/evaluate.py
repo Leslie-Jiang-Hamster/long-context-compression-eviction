@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--local-torch-dtype", default="auto", choices=("auto", "bfloat16", "float16", "float32"))
     p.add_argument("--local-max-new-tokens", type=int, default=256)
     p.add_argument("--local-temperature", type=float, default=0.0)
+    p.add_argument("--warmup-runs", type=int, default=2)
     p.add_argument("--judge-model", default="")
     p.add_argument("--judge-base-url", default=os.getenv("MINIMAX_BASE_URL", "https://api.minimaxi.com/v1"))
     p.add_argument("--judge-temperature", type=float, default=-1.0)
@@ -81,6 +82,7 @@ def main() -> None:
             seed=args.seed,
             local_max_new_tokens=args.local_max_new_tokens,
             local_temperature=args.local_temperature,
+            warmup_runs=args.warmup_runs,
             judge_repeats_override=args.judge_repeats,
             judge_sleep_seconds=args.judge_sleep_seconds,
             dry_run=args.dry_run,
@@ -100,6 +102,7 @@ def main() -> None:
             "dry_run": args.dry_run,
             "samples_file": args.samples_file,
             "max_samples": args.max_samples,
+            "warmup_runs": args.warmup_runs,
             "architecture": "local_model_for_perf + minimax_judge_for_semantic",
             "fallback_disabled": True,
         },

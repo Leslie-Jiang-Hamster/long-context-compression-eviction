@@ -4,6 +4,7 @@ import math
 import random
 import time
 from dataclasses import dataclass
+from statistics import median
 
 from .config import EvalConfig
 from .data import Sample
@@ -16,6 +17,7 @@ class RunOptions:
     seed: int
     local_max_new_tokens: int
     local_temperature: float
+    warmup_runs: int
     judge_repeats_override: int
     judge_sleep_seconds: float
     dry_run: bool
@@ -33,6 +35,21 @@ def _aggregate_semantic(scores: list[dict]) -> dict:
     return out
 
 
+def _percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    xs = sorted(values)
+    if len(xs) == 1:
+        return xs[0]
+    pos = (len(xs) - 1) * q
+    lo = int(math.floor(pos))
+    hi = int(math.ceil(pos))
+    if lo == hi:
+        return xs[lo]
+    w = pos - lo
+    return xs[lo] * (1.0 - w) + xs[hi] * w
+
+
 def run_pipeline(
     cfg: EvalConfig,
     samples: list[Sample],
@@ -44,8 +61,10 @@ def run_pipeline(
     methods = cfg.methods or ["full_kv", "ours_hybrid"]
     repeats = opts.judge_repeats_override if opts.judge_repeats_override > 0 else cfg.judge_repeats
     repeats = max(1, repeats)
+    warmup_runs = max(0, int(opts.warmup_runs))
 
     per_method_rows: dict[str, list[dict]] = {m: [] for m in methods}
+    warmed_methods: set[str] = set()
     for sidx, sample in enumerate(samples[: opts.max_samples]):
         for method in methods:
             print(f"[PROGRESS] sample={sidx+1}/{min(len(samples), opts.max_samples)} method={method} start", flush=True)
@@ -70,6 +89,17 @@ def run_pipeline(
                     for _ in range(repeats)
                 ]
             else:
+                if warmup_runs > 0 and method not in warmed_methods:
+                    print(f"[PROGRESS] method={method} warmup start runs={warmup_runs}", flush=True)
+                    for _ in range(warmup_runs):
+                        _ = local_generator.generate(
+                            question=sample.question,
+                            context=policy.method_context,
+                            max_new_tokens=opts.local_max_new_tokens,
+                            temperature=opts.local_temperature,
+                        )
+                    warmed_methods.add(method)
+                    print(f"[PROGRESS] method={method} warmup done", flush=True)
                 local = local_generator.generate(
                     question=sample.question,
                     context=policy.method_context,
@@ -139,6 +169,7 @@ def run_pipeline(
         rel = [r["semantic"]["answer_relevancy"] for r in rows]
         cp = [r["semantic"]["context_precision"] for r in rows]
         tps = [r["resource"]["throughput_tokens_per_sec"] for r in rows]
+        lats = [r["resource"]["generation_latency_seconds"] for r in rows]
         vram = [r["resource"]["peak_vram_gb"] for r in rows if r["resource"]["peak_vram_gb"] is not None]
         kvmb = [r["resource"]["kv_cache_mb_est"] for r in rows if r["resource"]["kv_cache_mb_est"] is not None]
         summary[method] = {
@@ -148,7 +179,12 @@ def run_pipeline(
                 "context_precision": round(sum(cp) / len(cp), 6),
             },
             "resource": {
-                "throughput_tokens_per_sec": round(sum(tps) / len(tps), 6),
+                "throughput_tokens_per_sec_mean": round(sum(tps) / len(tps), 6),
+                "throughput_tokens_per_sec_median": round(float(median(tps)), 6),
+                "throughput_tokens_per_sec_p90": round(float(_percentile(tps, 0.9)), 6),
+                "generation_latency_seconds_mean": round(sum(lats) / len(lats), 6),
+                "generation_latency_seconds_median": round(float(median(lats)), 6),
+                "generation_latency_seconds_p90": round(float(_percentile(lats, 0.9)), 6),
                 "peak_vram_gb": round(sum(vram) / len(vram), 6) if vram else None,
                 "kv_cache_mb_est": round(sum(kvmb) / len(kvmb), 6) if kvmb else None,
             },
