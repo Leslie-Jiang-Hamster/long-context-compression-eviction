@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from typing import Any
+import subprocess
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -15,6 +16,7 @@ class LocalGenResult:
     generated_tokens: int
     prompt_tokens: int
     peak_vram_gb: float | None
+    peak_vram_source: str
     kv_cache_bytes_est: int | None
 
 
@@ -38,6 +40,7 @@ class LocalGenerator:
             trust_remote_code=True,
         )
         self.model.eval()
+        self._gpu_index = self._detect_gpu_index()
 
     def _build_prompt(self, question: str, context: str) -> str:
         messages = [
@@ -64,14 +67,59 @@ class LocalGenerator:
         except Exception:
             return None
 
+    def _detect_gpu_index(self) -> int | None:
+        try:
+            if hasattr(self.model, "device") and self.model.device is not None and self.model.device.type == "cuda":
+                return int(self.model.device.index or 0)
+        except Exception:
+            pass
+        try:
+            first = next(self.model.parameters())
+            if first.device.type == "cuda":
+                return int(first.device.index or 0)
+        except Exception:
+            pass
+        return None
+
+    def _query_nvidia_smi_used_mem_mib(self) -> float | None:
+        if self._gpu_index is None:
+            return None
+        try:
+            out = subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=index,memory.used",
+                    "--format=csv,noheader,nounits",
+                ],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            )
+            for line in out.splitlines():
+                parts = [x.strip() for x in line.split(",")]
+                if len(parts) != 2:
+                    continue
+                if int(parts[0]) == int(self._gpu_index):
+                    return float(parts[1])
+        except Exception:
+            return None
+        return None
+
     def generate(self, question: str, context: str, max_new_tokens: int = 256, temperature: float = 0.0) -> LocalGenResult:
         prompt = self._build_prompt(question, context)
         inputs = self.tokenizer(prompt, return_tensors="pt")
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
+        use_torch_cuda_stats = False
+        nvidia_smi_peak_mib = None
+        nvidia_smi_start_mib = self._query_nvidia_smi_used_mem_mib()
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            torch.cuda.reset_peak_memory_stats()
+            try:
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
+                use_torch_cuda_stats = True
+            except Exception:
+                use_torch_cuda_stats = False
 
         started = time.perf_counter()
         with torch.no_grad():
@@ -85,6 +133,10 @@ class LocalGenerator:
             )
         elapsed = time.perf_counter() - started
 
+        nvidia_smi_end_mib = self._query_nvidia_smi_used_mem_mib()
+        if nvidia_smi_start_mib is not None and nvidia_smi_end_mib is not None:
+            nvidia_smi_peak_mib = max(nvidia_smi_start_mib, nvidia_smi_end_mib)
+
         prompt_tokens = int(inputs["input_ids"].shape[-1])
         seq = output.sequences[0]
         gen_ids = seq[prompt_tokens:]
@@ -92,8 +144,16 @@ class LocalGenerator:
         generated_tokens = int(gen_ids.shape[-1])
 
         peak_vram_gb = None
-        if torch.cuda.is_available():
-            peak_vram_gb = float(torch.cuda.max_memory_allocated()) / (1024 ** 3)
+        peak_vram_source = "none"
+        if use_torch_cuda_stats:
+            try:
+                peak_vram_gb = float(torch.cuda.max_memory_allocated()) / (1024 ** 3)
+                peak_vram_source = "torch_cuda_max_memory_allocated"
+            except Exception:
+                peak_vram_gb = None
+        if peak_vram_gb is None and nvidia_smi_peak_mib is not None:
+            peak_vram_gb = float(nvidia_smi_peak_mib) / 1024.0
+            peak_vram_source = "nvidia_smi_memory_used"
 
         kv_cache_bytes_est = self._estimate_kv_bytes(getattr(output, "past_key_values", None))
         return LocalGenResult(
@@ -102,6 +162,6 @@ class LocalGenerator:
             generated_tokens=generated_tokens,
             prompt_tokens=prompt_tokens,
             peak_vram_gb=peak_vram_gb,
+            peak_vram_source=peak_vram_source,
             kv_cache_bytes_est=kv_cache_bytes_est,
         )
-

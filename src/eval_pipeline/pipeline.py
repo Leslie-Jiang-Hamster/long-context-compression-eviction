@@ -58,6 +58,7 @@ def run_pipeline(
                 local.generated_tokens = 0
                 local.prompt_tokens = 0
                 local.peak_vram_gb = None
+                local.peak_vram_source = "none"
                 local.kv_cache_bytes_est = None
                 judge_scores = [
                     {
@@ -119,6 +120,7 @@ def run_pipeline(
                     if local.kv_cache_bytes_est is not None
                     else None,
                     "peak_vram_gb": local.peak_vram_gb,
+                    "peak_vram_source": local.peak_vram_source,
                     "throughput_tokens_per_sec": round(throughput, 6),
                     "generation_latency_seconds": round(local.elapsed_seconds, 6),
                     "generated_tokens": int(local.generated_tokens),
