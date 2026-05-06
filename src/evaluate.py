@@ -21,6 +21,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--longbench-split", default="test")
     p.add_argument("--longbench-cache-dir", default="data/longbench_cache")
     p.add_argument("--longbench-min-context-length", type=int, default=4000)
+    p.add_argument("--longbench-sort-by-length-desc", action="store_true")
+    p.add_argument("--longbench-top-k-by-length", type=int, default=0)
     p.add_argument("--no-auto-download", action="store_true")
     p.add_argument("--no-hf-datasets", action="store_true")
     p.add_argument("--max-samples", type=int, default=2)
@@ -60,6 +62,8 @@ def main() -> None:
         longbench_split=args.longbench_split,
         longbench_cache_dir=args.longbench_cache_dir,
         min_context_length=args.longbench_min_context_length if args.dataset_source == "longbench" else 0,
+        sort_by_length_desc=args.longbench_sort_by_length_desc if args.dataset_source == "longbench" else False,
+        top_k_by_length=args.longbench_top_k_by_length if args.dataset_source == "longbench" else 0,
         prefer_hf_datasets=not args.no_hf_datasets,
         auto_download=not args.no_auto_download,
     )
@@ -126,6 +130,10 @@ def main() -> None:
             "longbench_min_context_length": args.longbench_min_context_length
             if args.dataset_source == "longbench"
             else 0,
+            "longbench_sort_by_length_desc": args.longbench_sort_by_length_desc
+            if args.dataset_source == "longbench"
+            else False,
+            "longbench_top_k_by_length": args.longbench_top_k_by_length if args.dataset_source == "longbench" else 0,
             "max_samples": args.max_samples,
             "warmup_runs": args.warmup_runs,
             "architecture": "local_model_for_perf + minimax_judge_for_semantic",

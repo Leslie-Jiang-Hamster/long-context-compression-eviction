@@ -2,8 +2,9 @@
 set -euo pipefail
 
 CONFIG=${1:-configs/benchmark.longbench.yaml}
-MAX_SAMPLES=${2:-143}
+MAX_SAMPLES=${2:-100}
 MIN_CONTEXT_LENGTH=${3:-8000}
+TOP_K_BY_LENGTH=${4:-100}
 
 echo "[INFO] Running HOTPOTQA-only semantic eval (len >= ${MIN_CONTEXT_LENGTH}) with config: ${CONFIG}"
 if [[ ! -f "${CONFIG}" ]]; then
@@ -18,6 +19,8 @@ python3 src/evaluate.py \
   --dataset-source longbench \
   --longbench-subsets "hotpotqa" \
   --longbench-min-context-length "${MIN_CONTEXT_LENGTH}" \
+  --longbench-sort-by-length-desc \
+  --longbench-top-k-by-length "${TOP_K_BY_LENGTH}" \
   --max-samples "${MAX_SAMPLES}" \
   --local-model-name "Qwen/Qwen2.5-7B-Instruct" \
   --judge-model "MiniMax-Text-01"

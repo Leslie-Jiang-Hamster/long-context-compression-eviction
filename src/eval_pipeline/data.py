@@ -178,6 +178,8 @@ def load_samples(
     longbench_split: str = "test",
     longbench_cache_dir: str = "data/longbench_cache",
     min_context_length: int = 0,
+    sort_by_length_desc: bool = False,
+    top_k_by_length: int = 0,
     prefer_hf_datasets: bool = True,
     auto_download: bool = True,
 ) -> list[Sample]:
@@ -197,6 +199,17 @@ def load_samples(
             rows = [r for r in rows if _safe_len_hint(r) >= int(min_context_length)]
             print(
                 f"[DATA] LongBench rows filtered by min_context_length={min_context_length}: "
+                f"{before} -> {len(rows)}",
+                flush=True,
+            )
+        if sort_by_length_desc:
+            rows = sorted(rows, key=_safe_len_hint, reverse=True)
+            print("[DATA] LongBench rows sorted by length desc", flush=True)
+        if top_k_by_length > 0:
+            before = len(rows)
+            rows = rows[: int(top_k_by_length)]
+            print(
+                f"[DATA] LongBench rows top_k_by_length={int(top_k_by_length)}: "
                 f"{before} -> {len(rows)}",
                 flush=True,
             )
