@@ -15,7 +15,14 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Local-model eval + MiniMax judge")
     p.add_argument("--config", required=True)
     p.add_argument("--output-dir", default="results")
+    p.add_argument("--dataset-source", default="file", choices=("file", "longbench"))
     p.add_argument("--samples-file", default="data/longbench_multi_document_qa.sample.jsonl")
+    p.add_argument("--longbench-subsets", default="hotpotqa,2wikimqa,musique")
+    p.add_argument("--longbench-split", default="test")
+    p.add_argument("--longbench-cache-dir", default="data/longbench_cache")
+    p.add_argument("--longbench-min-context-length", type=int, default=4000)
+    p.add_argument("--no-auto-download", action="store_true")
+    p.add_argument("--no-hf-datasets", action="store_true")
     p.add_argument("--max-samples", type=int, default=2)
     p.add_argument("--api-key-file", default="minimax_api_key.txt")
     p.add_argument("--local-model-name", default="")
@@ -44,7 +51,18 @@ def main() -> None:
     if not args.dry_run and not api_key:
         raise RuntimeError("Judge API key missing.")
 
-    samples = load_samples(args.samples_file, args.max_samples)
+    subsets = [x.strip() for x in args.longbench_subsets.split(",") if x.strip()]
+    samples = load_samples(
+        path=args.samples_file,
+        max_samples=args.max_samples,
+        dataset_source=args.dataset_source,
+        longbench_subsets=subsets,
+        longbench_split=args.longbench_split,
+        longbench_cache_dir=args.longbench_cache_dir,
+        min_context_length=args.longbench_min_context_length if args.dataset_source == "longbench" else 0,
+        prefer_hf_datasets=not args.no_hf_datasets,
+        auto_download=not args.no_auto_download,
+    )
     local_model_name = args.local_model_name.strip() or cfg.model_name
     judge_model = args.judge_model.strip() or cfg.judge_model
     judge_temperature = args.judge_temperature if args.judge_temperature >= 0 else cfg.judge_temperature
@@ -101,6 +119,13 @@ def main() -> None:
             "judge_repeats": args.judge_repeats if args.judge_repeats > 0 else cfg.judge_repeats,
             "dry_run": args.dry_run,
             "samples_file": args.samples_file,
+            "dataset_source": args.dataset_source,
+            "longbench_subsets": subsets if args.dataset_source == "longbench" else [],
+            "longbench_split": args.longbench_split if args.dataset_source == "longbench" else "",
+            "longbench_cache_dir": args.longbench_cache_dir if args.dataset_source == "longbench" else "",
+            "longbench_min_context_length": args.longbench_min_context_length
+            if args.dataset_source == "longbench"
+            else 0,
             "max_samples": args.max_samples,
             "warmup_runs": args.warmup_runs,
             "architecture": "local_model_for_perf + minimax_judge_for_semantic",
