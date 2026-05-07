@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 from dataclasses import dataclass
 
@@ -60,6 +61,26 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
 @dataclass
 class PolicyResult:
     method_context: str
@@ -78,12 +99,26 @@ def apply_method(method: str, question: str, contexts: list[str]) -> PolicyResul
     sink_keep = 1
     sink_chunks = all_chunks[:sink_keep]
     rest_chunks = all_chunks[sink_keep:]
-    scored_rest: list[tuple[float, int, str]] = []
-    for idx, chunk in enumerate(rest_chunks):
-        overlap = _lexical_overlap_score(qset, chunk)
-        recency = (idx + 1) / max(1, len(rest_chunks))
-        score = 0.8 * overlap + 0.2 * recency
-        scored_rest.append((score, idx, chunk))
+
+    score_overlap_weight = _env_float("AHEC_SCORE_OVERLAP_WEIGHT", 0.8)
+    score_recency_weight = _env_float("AHEC_SCORE_RECENCY_WEIGHT", 0.2)
+    weight_sum = score_overlap_weight + score_recency_weight
+    if weight_sum <= 1e-9:
+        score_overlap_weight, score_recency_weight = 0.8, 0.2
+    else:
+        score_overlap_weight /= weight_sum
+        score_recency_weight /= weight_sum
+
+    def _score_chunks(chunks: list[str]) -> list[tuple[float, int, str]]:
+        scored: list[tuple[float, int, str]] = []
+        for idx, chunk in enumerate(chunks):
+            overlap = _lexical_overlap_score(qset, chunk)
+            recency = (idx + 1) / max(1, len(chunks))
+            score = score_overlap_weight * overlap + score_recency_weight * recency
+            scored.append((score, idx, chunk))
+        return scored
+
+    scored_rest = _score_chunks(rest_chunks)
 
     selected: list[str]
     detail = {"sink_kept": sink_keep, "total_chunks": len(all_chunks)}
@@ -105,21 +140,79 @@ def apply_method(method: str, question: str, contexts: list[str]) -> PolicyResul
         base = sink_chunks + rest_chunks
         selected = [_compress_chunk_by_question(c, question, keep_ratio=0.65) for c in base]
         detail.update({"eviction_rate": 0.0, "compression_rate": 0.35})
-    elif method_key in ("ahec", "ours_hybrid"):
-        pressure = _clamp((full_tokens_est - 1500) / 6000.0, 0.0, 1.0)
-        eviction_rate = 0.15 + 0.35 * pressure
-        compression_rate = 0.10 + 0.45 * pressure
+    elif method_key in ("ahec", "ours_hybrid", "ahec_wo_adaptive_gate", "ahec_wo_sink_preserve", "ahec_wo_compression", "ahec_wo_eviction"):
+        pressure_offset_tokens = _env_float("AHEC_PRESSURE_OFFSET_TOKENS", 1500.0)
+        pressure_scale_tokens = max(_env_float("AHEC_PRESSURE_SCALE_TOKENS", 6000.0), 1.0)
+        evict_base = _env_float("AHEC_EVICT_BASE", 0.15)
+        evict_span = _env_float("AHEC_EVICT_SPAN", 0.35)
+        compress_base = _env_float("AHEC_COMPRESS_BASE", 0.10)
+        compress_span = _env_float("AHEC_COMPRESS_SPAN", 0.45)
+        sink_keep_env = max(0, _env_int("AHEC_SINK_KEEP", 1))
+
+        pressure = _clamp((full_tokens_est - pressure_offset_tokens) / pressure_scale_tokens, 0.0, 1.0)
+        if method_key == "ahec_wo_adaptive_gate":
+            # Disable adaptive gate: use fixed rates.
+            eviction_rate = 0.30
+            compression_rate = 0.35
+            sink_keep = sink_keep_env
+            sink_chunks = all_chunks[:sink_keep]
+            rest_chunks = all_chunks[sink_keep:]
+            scored_rest = _score_chunks(rest_chunks)
+        else:
+            sink_keep = sink_keep_env
+            sink_chunks = all_chunks[:sink_keep]
+            rest_chunks = all_chunks[sink_keep:]
+            scored_rest = _score_chunks(rest_chunks)
+            eviction_rate = evict_base + evict_span * pressure
+            compression_rate = compress_base + compress_span * pressure
+
+        if method_key == "ahec_wo_sink_preserve":
+            # Disable sink preservation: treat all chunks uniformly.
+            sink_keep = 0
+            sink_chunks = []
+            rest_chunks = all_chunks
+            scored_rest = _score_chunks(rest_chunks)
+
+        if method_key == "ahec_wo_compression":
+            compression_rate = 0.0
+        if method_key == "ahec_wo_eviction":
+            eviction_rate = 0.0
+
+        eviction_rate = _clamp(eviction_rate, 0.0, 0.95)
+        compression_rate = _clamp(compression_rate, 0.0, 0.95)
+
         keep_n = max(1, int(math.ceil(len(rest_chunks) * (1.0 - eviction_rate))))
         top = sorted(scored_rest, key=lambda x: x[0], reverse=True)[:keep_n]
         kept = [x[2] for x in sorted(top, key=lambda x: x[1])]
-        kept = [_compress_chunk_by_question(c, question, keep_ratio=1.0 - compression_rate) for c in kept]
+        if compression_rate > 0.0:
+            kept = [_compress_chunk_by_question(c, question, keep_ratio=1.0 - compression_rate) for c in kept]
         selected = sink_chunks + kept
+        policy_name = "sink_preserve + importance_eviction + question_aware_compression"
+        if method_key == "ahec_wo_adaptive_gate":
+            policy_name = "fixed_gate + sink_preserve + importance_eviction + question_aware_compression"
+        elif method_key == "ahec_wo_sink_preserve":
+            policy_name = "no_sink_preserve + importance_eviction + question_aware_compression"
+        elif method_key == "ahec_wo_compression":
+            policy_name = "sink_preserve + importance_eviction"
+        elif method_key == "ahec_wo_eviction":
+            policy_name = "sink_preserve + question_aware_compression"
         detail.update(
             {
                 "eviction_rate": round(eviction_rate, 4),
                 "compression_rate": round(compression_rate, 4),
-                "adaptive_pressure": round(pressure, 4),
-                "ahec_policy": "sink_preserve + importance_eviction + question_aware_compression",
+                "adaptive_pressure": round(pressure, 4) if method_key != "ahec_wo_adaptive_gate" else None,
+                "ahec_policy": policy_name,
+                "ahec_params": {
+                    "pressure_offset_tokens": pressure_offset_tokens,
+                    "pressure_scale_tokens": pressure_scale_tokens,
+                    "evict_base": evict_base,
+                    "evict_span": evict_span,
+                    "compress_base": compress_base,
+                    "compress_span": compress_span,
+                    "sink_keep": sink_keep,
+                    "score_overlap_weight": round(score_overlap_weight, 4),
+                    "score_recency_weight": round(score_recency_weight, 4),
+                },
             }
         )
     else:

@@ -1,0 +1,22 @@
+benchmark: longbench
+subset:
+  - hotpotqa
+model:
+  name: "Qwen/Qwen2.5-7B-Instruct"
+  max_context: 32768
+methods:
+  - AHEC
+metrics:
+  semantic:
+    - faithfulness
+    - answer_relevancy
+    - context_precision
+  resource:
+    - kv_mem_reduction
+    - peak_vram
+    - throughput
+judge:
+  model: "MiniMax-Text-01"
+  temperature: 0
+  repeats: 1
+  human_audit_ratio: 0.1

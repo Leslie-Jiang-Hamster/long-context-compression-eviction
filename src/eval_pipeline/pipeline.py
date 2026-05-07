@@ -163,13 +163,31 @@ def apply_judging_to_rows(
             else:
                 judge_scores = []
                 for _ in range(repeats):
-                    jr = judge.judge_once(
-                        question=row["question"],
-                        context=row["method_context"],
-                        answer=row["model_answer"],
-                        reference=row["reference_answer"],
-                    )
-                    judge_scores.append(jr.score)
+                    max_retry = 5
+                    last_exc: Exception | None = None
+                    for attempt in range(1, max_retry + 1):
+                        try:
+                            jr = judge.judge_once(
+                                question=row["question"],
+                                context=row["method_context"],
+                                answer=row["model_answer"],
+                                reference=row["reference_answer"],
+                            )
+                            judge_scores.append(jr.score)
+                            last_exc = None
+                            break
+                        except Exception as exc:
+                            last_exc = exc
+                            if attempt >= max_retry:
+                                break
+                            backoff = min(30.0, opts.judge_sleep_seconds * (2 ** attempt))
+                            print(
+                                f"[WARN] method={method} judge_row={ridx+1} retry={attempt}/{max_retry} err={type(exc).__name__}",
+                                flush=True,
+                            )
+                            time.sleep(backoff)
+                    if last_exc is not None:
+                        raise last_exc
                     time.sleep(opts.judge_sleep_seconds)
             agg = _aggregate_semantic(judge_scores)
             new_row = dict(row)
@@ -226,4 +244,3 @@ def summarize_rows(per_method_rows: dict[str, list[dict]]) -> dict:
             "num_samples": len(rows),
         }
     return summary
-

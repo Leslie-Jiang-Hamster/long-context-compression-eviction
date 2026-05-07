@@ -34,3 +34,5 @@ Thumbs.db
 # Env
 .env
 minimax_api_key.txt
+
+data/
